@@ -1,0 +1,94 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import networkx as nx
+import ast
+import os
+
+def parse_code_to_graph(code):
+    """Parse user code into a dependency graph."""
+    tree = ast.parse(code)
+    graph = nx.DiGraph()
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            graph.add_node(node.name)
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                    graph.add_edge(node.name, child.func.id)
+    return graph
+
+def modularize_code(graph):
+    """Partition the graph using Kernighan-Lin algorithm."""
+    try:
+        partitions = nx.algorithms.community.kernighan_lin_bisection(graph)
+        return partitions
+    except Exception as e:
+        return str(e)
+
+def save_partitioned_code(code, partitions):
+    """Save partitioned code to files."""
+    output_dir = "modularized_code"
+    os.makedirs(output_dir, exist_ok=True)
+
+    tree = ast.parse(code)
+    for idx, partition in enumerate(partitions):
+        filename = os.path.join(output_dir, f"module_{idx + 1}.py")
+        with open(filename, "w") as file:
+            for node_name in partition:
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == node_name:
+                        file.write(ast.get_source_segment(code, node) + "\n\n")
+
+def process_code():
+    """Process code from input and display results."""
+    user_code = text_input.get("1.0", tk.END).strip()
+    if not user_code:
+        messagebox.showerror("Error", "No code provided!")
+        return
+
+    graph = parse_code_to_graph(user_code)
+    partitions = modularize_code(graph)
+
+    if isinstance(partitions, str):  # If an error occurred
+        messagebox.showerror("Error", partitions)
+        return
+
+    save_partitioned_code(user_code, partitions)
+
+    result_text = "\n".join([f"Module {i + 1}: {', '.join(partition)}" for i, partition in enumerate(partitions)])
+    text_output.delete("1.0", tk.END)
+    text_output.insert(tk.END, result_text)
+    messagebox.showinfo("Success", f"Code modularized! Results saved in 'modularized_code' folder.")
+
+# GUI Setup
+root = tk.Tk()
+root.title("Code Modularization Tool")
+
+# Input Frame
+frame_input = tk.Frame(root)
+frame_input.pack(pady=10)
+
+tk.Label(frame_input, text="Paste your Python code:").pack(anchor="w")
+text_input = tk.Text(frame_input, height=15, width=80)
+text_input.pack()
+
+# Output Frame
+frame_output = tk.Frame(root)
+frame_output.pack(pady=10)
+
+tk.Label(frame_output, text="Suggested Modules:").pack(anchor="w")
+text_output = tk.Text(frame_output, height=10, width=80, state="normal")
+text_output.pack()
+
+# Buttons
+button_frame = tk.Frame(root)
+button_frame.pack(pady=10)
+
+process_button = tk.Button(button_frame, text="Modularize Code", command=process_code)
+process_button.pack(side="left", padx=5)
+
+exit_button = tk.Button(button_frame, text="Exit", command=root.quit)
+exit_button.pack(side="left", padx=5)
+
+# Start GUI Loop
+root.mainloop()
